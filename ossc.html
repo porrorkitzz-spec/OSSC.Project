@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบรับคำปรึกษาแนะแนว</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Kanit', sans-serif; }
+        body { 
+            margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; 
+            background: linear-gradient(135deg, #e3f2fd 0%, #fce4ec 100%); overflow: hidden;
+        }
+        
+        /* --- สไตล์ของ UI ทั้งหมด --- */
+        .card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 90%; max-width: 400px; text-align: center; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1.5px solid #eee; border-radius: 12px; font-size: 16px; outline: none; }
+        .input-hint { font-size: 12px; color: #888; text-align: left; margin-top: -10px; margin-bottom: 10px; }
+        button { width: 100%; padding: 15px; background-color: #03a84e; color: white; border: none; border-radius: 12px; font-size: 16px; cursor: pointer; margin-bottom: 10px; font-weight: 500; }
+        .btn-register { background-color: #3498db; }
+        .btn-logout { background-color: #e74c3c; padding: 8px; font-size: 14px; width: auto; margin: 0; border-radius: 8px;}
+
+        /* --- UI แชทของนักเรียน (จอมือถือ) --- */
+        #student-ui {
+            display: none; flex-direction: column; width: 100%; max-width: 450px; height: 95vh; 
+            background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden;
+        }
+
+        /* --- UI แชทของคุณครู (สไตล์ LINE PC) --- */
+        #admin-ui {
+            display: none; width: 95%; max-width: 1000px; height: 90vh; 
+            background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden;
+        }
+        .admin-sidebar { width: 300px; background: #f4f7f6; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .admin-main { flex: 1; display: flex; flex-direction: column; background: #f9f9f9; }
+        
+        /* หัวแถบ */
+        .chat-header { background: #03a84e; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .admin-header { background: #2c3e50; } /* สีหัวแถบครู */
+        .user-profile-header { display: flex; align-items: center; gap: 10px; }
+        .header-avatar { width: 40px; height: 40px; border-radius: 50%; background: white; object-fit: cover;}
+        .chat-header h3 { margin: 0; font-weight: 500; font-size: 18px; }
+
+        /* รายชื่อนักเรียน (ฝั่งซ้ายของครู) */
+        .user-list { flex: 1; overflow-y: auto; }
+        .user-item { padding: 15px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: background 0.2s; }
+        .user-item:hover { background: #e9ecef; }
+        .user-item.active { background: #d4edda; border-left: 5px solid #03a84e; }
+        .user-item-info h4 { margin: 0; font-size: 16px; color: #333;}
+        .user-item-info p { margin: 0; font-size: 13px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;}
+
+        /* พื้นที่แสดงข้อความ */
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: #f9f9f9;}
+        .message-row { display: flex; align-items: flex-end; margin-bottom: 15px; gap: 10px; }
+        .row-me { flex-direction: row-reverse; } 
+        .row-other { flex-direction: row; }      
+        .chat-avatar { width: 35px; height: 35px; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
+        .message-content { max-width: 75%; display: flex; flex-direction: column; }
+        .row-me .message-content { align-items: flex-end; }
+        .row-other .message-content { align-items: flex-start; }
+        .sender-name { font-size: 12px; color: #888; margin-bottom: 3px; margin-left: 5px; margin-right: 5px; }
+        .message-bubble { padding: 10px 15px; border-radius: 15px; word-wrap: break-word; font-size: 15px; }
+        .row-me .message-bubble { background: #dcf8c6; border-bottom-right-radius: 0; }
+        .row-other .message-bubble { background: #ffffff; border: 1px solid #eee; border-bottom-left-radius: 0; }
+        
+        /* กล่องพิมพ์ข้อความ */
+        .chat-input-area { display: flex; padding: 15px; background: white; border-top: 1px solid #eee; }
+        .chat-input-area input { margin-bottom: 0; border-radius: 20px; border: 1px solid #ddd; }
+        .chat-input-area button { width: 80px; margin-bottom: 0; margin-left: 10px; border-radius: 20px; }
+        
+        .empty-chat { flex: 1; display: flex; justify-content: center; align-items: center; color: #aaa; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. หน้าต่างเข้าสู่ระบบ -->
+    <div class="card" id="login-ui">
+        <h2>เข้าสู่ระบบแนะแนว</h2>
+        <input type="email" id="email" placeholder="อีเมล">
+        <input type="password" id="password" placeholder="รหัสผ่าน">
+        <hr style="border: 0.5px solid #eee; margin: 20px 0;">
+        <input type="text" id="nickname" placeholder="นามแฝง (กรอกเฉพาะตอนกดสมัครใหม่)">
+        <p class="input-hint">* นามแฝงจะถูกนำไปสร้างรูป Avatar อัตโนมัติ</p>
+        <button onclick="login()">เข้าสู่ระบบ</button>
+        <button class="btn-register" onclick="register()">สมัครสมาชิกใหม่</button>
+    </div>
+
+    <!-- 2. หน้าต่างแชท (มุมมองนักเรียน) -->
+    <div id="student-ui">
+        <div class="chat-header">
+            <div class="user-profile-header">
+                <img id="student-header-img" class="header-avatar" src="" alt="avatar">
+                <h3 id="student-display">กำลังโหลด...</h3>
+            </div>
+            <button class="btn-logout" onclick="logout()">ออก</button>
+        </div>
+        <div class="chat-messages" id="student-messages-container"></div>
+        <div class="chat-input-area">
+            <input type="text" id="student-chat-input" placeholder="พิมพ์ปรึกษาคุณครูที่นี่..." onkeypress="handleEnter(event, 'student')">
+            <button onclick="sendMessage('student')">ส่ง</button>
+        </div>
+    </div>
+
+    <!-- 3. หน้าต่างแชท (มุมมองคุณครู Admin LINE PC) -->
+    <div id="admin-ui">
+        <!-- ฝั่งซ้าย: รายชื่อนักเรียน -->
+        <div class="admin-sidebar">
+            <div class="chat-header admin-header">
+                <h3>👩‍🏫 ห้องพักครูแนะแนว</h3>
+                <button class="btn-logout" onclick="logout()">ออก</button>
+            </div>
+            <div class="user-list" id="admin-user-list">
+                <!-- รายชื่อนักเรียนจะมาแทรกตรงนี้ -->
+            </div>
+        </div>
+        <!-- ฝั่งขวา: ห้องแชท -->
+        <div class="admin-main" id="admin-chat-section">
+            <div class="empty-chat" id="admin-empty-state">👈 เลือกนักเรียนเพื่อเริ่มให้คำปรึกษา</div>
+            
+            <div id="admin-active-chat" style="display: none; height: 100%; flex-direction: column;">
+                <div class="chat-header" style="background: white; color: #333; border-bottom: 1px solid #ddd;">
+                    <div class="user-profile-header">
+                        <img id="admin-active-img" class="header-avatar" src="" alt="avatar">
+                        <h3 id="admin-active-name" style="font-size: 16px;">ชื่อนักเรียน</h3>
+                    </div>
+                </div>
+                <div class="chat-messages" id="admin-messages-container"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="admin-chat-input" placeholder="พิมพ์ตอบนักเรียน..." onkeypress="handleEnter(event, 'admin')">
+                    <button onclick="sendMessage('admin')">ส่ง</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        // เพิ่ม setDoc และ doc เข้ามาเพื่อจัดการข้อมูลนักเรียนแต่ละคน
+        import { getFirestore, collection, addDoc, setDoc, doc, serverTimestamp, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDiBJa2wwJdzumTFAKGJM2UE83bqpVHGsw",
+            authDomain: "ossc-4205b.firebaseapp.com",
+            projectId: "ossc-4205b",
+            storageBucket: "ossc-4205b.firebasestorage.app",
+            messagingSenderId: "492343790701",
+            appId: "1:492343790701:web:a1f6eb57675c4869c9c364",
+            measurementId: "G-XBJPDWGXZ5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // ==========================================
+        // 🚨 กำหนดอีเมลของคุณครู (Admin) ไว้ที่นี่! 🚨
+        const ADMIN_EMAIL = "kru@school.com"; 
+        // ==========================================
+
+        let currentUser = null;
+        let activeChatStudentId = null; // ตัวแปรเก็บว่าครูกำลังคุยกับนักเรียนคนไหนอยู่
+        let unsubscribeMessages = null; // ตัวแปรสำหรับปิดการดึงแชทเก่าเมื่อเปลี่ยนคนคุย
+
+        // --- ระบบแยกว่าใครเป็นใคร (ยามตรวจบัตร) ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-ui').style.display = 'none';
+
+                if (user.email === ADMIN_EMAIL) {
+                    // ถ้าเป็นครู ให้เปิดหน้า Admin UI
+                    document.getElementById('admin-ui').style.display = 'flex';
+                    document.getElementById('student-ui').style.display = 'none';
+                    loadAdminUserList(); // โหลดรายชื่อนักเรียนฝั่งซ้าย
+                } else {
+                    // ถ้าเป็นนักเรียน ให้เปิดหน้า Student UI
+                    document.getElementById('student-ui').style.display = 'flex';
+                    document.getElementById('admin-ui').style.display = 'none';
+                    document.getElementById('student-display').innerText = user.displayName || user.email;
+                    document.getElementById('student-header-img').src = user.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=guest";
+                    loadMessages(user.uid, 'student-messages-container'); // โหลดแชทของตัวเอง
+                }
+            } else {
+                currentUser = null;
+                document.getElementById('login-ui').style.display = 'block';
+                document.getElementById('student-ui').style.display = 'none';
+                document.getElementById('admin-ui').style.display = 'none';
+            }
+        });
+
+        // --- การล็อกอินและสมัครสมาชิก (เหมือนเดิม) ---
+        window.register = function() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            const nickname = document.getElementById("nickname").value;
+            if(!email || !password || !nickname) return alert("กรุณากรอกข้อมูลให้ครบครับ");
+
+            createUserWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    const avatarURL = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(nickname)}`;
+                    return updateProfile(userCredential.user, { displayName: nickname, photoURL: avatarURL });
+                })
+                .then(() => alert("สมัครสมาชิกสำเร็จ!"))
+                .catch(error => alert("ข้อผิดพลาด: " + error.message));
+        };
+
+        window.login = function() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            if(!email || !password) return alert("กรุณากรอกข้อมูลให้ครบ");
+            signInWithEmailAndPassword(auth, email, password)
+                .catch(error => alert("รหัสผ่านผิด หรืออีเมลไม่ถูกต้อง"));
+        };
+
+        window.logout = function() { signOut(auth); };
+
+        // --- ฟังก์ชันส่งข้อความ (แยกกรณีนักเรียนส่ง และ ครูส่ง) ---
+        window.sendMessage = async function(role) {
+            let inputId = role === 'admin' ? 'admin-chat-input' : 'student-chat-input';
+            const inputField = document.getElementById(inputId);
+            const text = inputField.value.trim();
+            
+            if (text === "") return;
+
+            let targetStudentId = role === 'admin' ? activeChatStudentId : currentUser.uid;
+            
+            if (!targetStudentId) return; // ถ้าครูยังไม่ได้เลือกนักเรียน ห้ามส่ง
+
+            inputField.value = ""; 
+
+            // 1. นำข้อความไปเก็บในกล่องแชทของนักเรียนคนนั้นๆ
+            await addDoc(collection(db, `chats/${targetStudentId}/messages`), {
+                text: text,
+                senderId: currentUser.uid,
+                senderName: role === 'admin' ? "คุณครูแนะแนว" : (currentUser.displayName || "ไม่ระบุชื่อ"),
+                senderPhoto: role === 'admin' ? "https://api.dicebear.com/7.x/bottts/svg?seed=teacher" : currentUser.photoURL,
+                createdAt: serverTimestamp()
+            });
+
+            // 2. อัปเดตข้อมูล "แชทล่าสุด" เพื่อให้ครูเห็นในแถบรายชื่อด้านซ้าย
+            if (role === 'student') {
+                await setDoc(doc(db, "chats", currentUser.uid), {
+                    studentName: currentUser.displayName,
+                    studentPhoto: currentUser.photoURL,
+                    lastMessage: text,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            } else {
+                await setDoc(doc(db, "chats", targetStudentId), {
+                    lastMessage: "คุณครู: " + text,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
+        };
+
+        window.handleEnter = function(e, role) { if (e.key === 'Enter') sendMessage(role); };
+
+        // --- 🧑‍🎓 ฟังก์ชันโหลดข้อความแชท (ใช้ร่วมกันทั้งครูและนักเรียน) ---
+        function loadMessages(studentUid, containerId) {
+            if (unsubscribeMessages) unsubscribeMessages(); // ล้างการดึงข้อมูลเก่าทิ้งก่อน (กรณีครูเปลี่ยนคนคุย)
+
+            const q = query(collection(db, `chats/${studentUid}/messages`), orderBy("createdAt", "asc"));
+            
+            unsubscribeMessages = onSnapshot(q, (snapshot) => {
+                const msgContainer = document.getElementById(containerId);
+                msgContainer.innerHTML = ""; 
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const isMe = data.senderId === currentUser.uid;
+                    
+                    const div = document.createElement("div");
+                    div.className = `message-row ${isMe ? 'row-me' : 'row-other'}`;
+                    div.innerHTML = `
+                        <img class="chat-avatar" src="${data.senderPhoto}" alt="avatar">
+                        <div class="message-content">
+                            <div class="sender-name">${data.senderName}</div>
+                            <div class="message-bubble">${data.text}</div>
+                        </div>
+                    `;
+                    msgContainer.appendChild(div);
+                });
+                msgContainer.scrollTop = msgContainer.scrollHeight;
+            });
+        }
+
+        // --- 👩‍🏫 ฟังก์ชันโหลดรายชื่อนักเรียนฝั่งซ้าย (เฉพาะครู) ---
+        window.loadAdminUserList = function() {
+            // ดึงรายชื่อนักเรียนที่มีการพิมพ์แชทเข้ามา เรียงตามเวลาล่าสุด
+            const q = query(collection(db, "chats"), orderBy("updatedAt", "desc"));
+            
+            onSnapshot(q, (snapshot) => {
+                const listContainer = document.getElementById('admin-user-list');
+                listContainer.innerHTML = "";
+                
+                snapshot.forEach((docSnap) => {
+                    const studentData = docSnap.data();
+                    const studentUid = docSnap.id;
+                    
+                    const div = document.createElement("div");
+                    div.className = `user-item ${activeChatStudentId === studentUid ? 'active' : ''}`;
+                    div.onclick = () => openChatWithStudent(studentUid, studentData.studentName, studentData.studentPhoto);
+                    
+                    div.innerHTML = `
+                        <img class="chat-avatar" src="${studentData.studentPhoto}" alt="avatar">
+                        <div class="user-item-info">
+                            <h4>${studentData.studentName || 'ไม่ระบุชื่อ'}</h4>
+                            <p>${studentData.lastMessage || 'ส่งข้อความ...'}</p>
+                        </div>
+                    `;
+                    listContainer.appendChild(div);
+                });
+            });
+        }
+
+        // --- 👩‍🏫 ฟังก์ชันเมื่อครูคลิกเลือกนักเรียนในรายชื่อ ---
+        window.openChatWithStudent = function(studentUid, studentName, studentPhoto) {
+            activeChatStudentId = studentUid;
+            
+            // สลับหน้าจอขวามือจาก "หน้าว่าง" เป็น "ห้องแชท"
+            document.getElementById('admin-empty-state').style.display = 'none';
+            document.getElementById('admin-active-chat').style.display = 'flex';
+            
+            // อัปเดตหัวแชท
+            document.getElementById('admin-active-name').innerText = studentName;
+            document.getElementById('admin-active-img').src = studentPhoto;
+            
+            // ไฮไลต์รายชื่อด้านซ้าย
+            loadAdminUserList(); 
+            
+            // ดึงแชทของนักเรียนคนนี้มาแสดง
+            loadMessages(studentUid, 'admin-messages-container');
+        }
+    </script>
+</body>
+</html>
